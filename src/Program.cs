@@ -9,9 +9,15 @@
 
 class Program
 {
-    static void Main()
+    static void Main(string[] args)
     {
-        string filePath = @"C:\testfile.sql";
+        if (args.Length == 0)
+        {
+            Console.WriteLine("Please provide the file path as a command line argument.");
+            return;
+        }
+
+        string filePath = args[0];
         var parser = new TSql150Parser(false);
 
         using var reader = new StreamReader(filePath);
