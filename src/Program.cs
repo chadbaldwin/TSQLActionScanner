@@ -1,11 +1,11 @@
 ﻿using Microsoft.SqlServer.TransactSql.ScriptDom;
 
-// TODO: Add check for merge, truncate and output into statements
 // TODO: Exclude temp tables from all checks
 // TODO: Reorganize methods into better classes instead of lumping everything together or making everything static
 // TODO: Change hardcoded file path to use input parameter
 // TODO: Expand to accpet text directly? Or stick with file paths? - Would support piping OBJECTDEFINITION direct from SQL
 // TODO: Consider converting into compiled PowerShell cmdlet to support piping natively?
+// TODO: Test nested tables in update/delete statements - for example UPDATE x SET x.Col = 1 FROM (SELECT col FROM dbo.MyTable t WHERE t.ID < 100) x
 
 class Program
 {
@@ -71,9 +71,7 @@ class StatementVisitor : TSqlFragmentVisitor
     {
         if (statement.InsertSpecification.Target is NamedTableReference table)
         {
-            var name = GetSchemaObjectNameString(table.SchemaObject);
-
-            WriteDotRelationship(_topLevelObject, name, "INSERT");
+            WriteDotRelationship(_topLevelObject, GetSchemaObjectNameString(table.SchemaObject), "INSERT");
         }
     }
 
@@ -83,6 +81,7 @@ class StatementVisitor : TSqlFragmentVisitor
     public override void Visit(DeleteStatement statement)
         => ProcessUpdateDeleteSpec(statement.DeleteSpecification, "DELETE");
 
+    // Update and Delete statements need special handling because the target object can be an alias
     public void ProcessUpdateDeleteSpec(UpdateDeleteSpecificationBase spec, string label)
     {
         if (spec.Target is NamedTableReference table)
@@ -105,12 +104,46 @@ class StatementVisitor : TSqlFragmentVisitor
         }
     }
 
+    public override void Visit(OutputIntoClause statement)
+    {
+        if (statement.IntoTable is NamedTableReference table)
+        {
+            WriteDotRelationship(_topLevelObject, GetSchemaObjectNameString(table.SchemaObject), "INSERT");
+        }
+    }
+
+    public override void Visit(MergeStatement statement)
+    {
+        foreach (var actionClause in statement.MergeSpecification.ActionClauses)
+        {
+            if (statement.MergeSpecification.Target is NamedTableReference targetTable)
+            {
+                if (actionClause.Action is DeleteMergeAction)
+                {
+                    WriteDotRelationship(_topLevelObject, GetSchemaObjectNameString(targetTable.SchemaObject), "DELETE");
+                }
+                else if (actionClause.Action is UpdateMergeAction)
+                {
+                    WriteDotRelationship(_topLevelObject, GetSchemaObjectNameString(targetTable.SchemaObject), "UPDATE");
+                }
+                else if (actionClause.Action is InsertMergeAction)
+                {
+                    WriteDotRelationship(_topLevelObject, GetSchemaObjectNameString(targetTable.SchemaObject), "INSERT");
+                }
+            }
+        }
+    }
+
+    public override void Visit(TruncateTableStatement statement)
+    {
+        WriteDotRelationship(_topLevelObject, GetSchemaObjectNameString(statement.TableName), "TRUNC");
+    }
+
     public override void Visit(ExecuteStatement statement)
     {
         if (statement.ExecuteSpecification.ExecutableEntity is ExecutableProcedureReference proc)
         {
-            var name = GetSchemaObjectNameString(proc.ProcedureReference.ProcedureReference.Name);
-            WriteDotRelationship(_topLevelObject, name, "EXEC");
+            WriteDotRelationship(_topLevelObject, GetSchemaObjectNameString(proc.ProcedureReference.ProcedureReference.Name), "EXEC");
         }
 
         if (statement.ExecuteSpecification.ExecutableEntity is ExecutableStringList exec)
@@ -121,8 +154,7 @@ class StatementVisitor : TSqlFragmentVisitor
 
     public override void Visit(BeginDialogStatement statement)
     {
-        var name = $"{statement.InitiatorServiceName.Value}.{statement.ContractName.Value}";
-        WriteDotRelationship(_topLevelObject, name, "QUEUE");
+        WriteDotRelationship(_topLevelObject, $"{statement.InitiatorServiceName.Value}.{statement.ContractName.Value}", "QUEUE");
     }
 
     // Helper class to visit all table references in the FROM clause
