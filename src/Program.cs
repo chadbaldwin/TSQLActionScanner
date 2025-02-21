@@ -1,6 +1,6 @@
 ﻿using Microsoft.SqlServer.TransactSql.ScriptDom;
 
-// TODO: Exclude temp tables from all checks
+// TODO: Exclude temp tables from all checks - There doesn't appear to be a programmatic way to identify temp tables other than "starts with #"
 // TODO: Reorganize methods into better classes instead of lumping everything together or making everything static
 // TODO: Change hardcoded file path to use input parameter
 // TODO: Expand to accpet text directly? Or stick with file paths? - Would support piping OBJECTDEFINITION direct from SQL
@@ -52,15 +52,8 @@ class Program
     }
 }
 
-class StatementVisitor : TSqlFragmentVisitor
+class StatementVisitor(string topLevelObject) : TSqlFragmentVisitor
 {
-    private readonly string _topLevelObject;
-
-    public StatementVisitor(string topLevelObject)
-    {
-        _topLevelObject = topLevelObject;
-    }
-
     public override void Visit(TSqlStatement statement)
     {
         //Console.WriteLine($"  {statement.GetType().Name}");
@@ -71,7 +64,7 @@ class StatementVisitor : TSqlFragmentVisitor
     {
         if (statement.InsertSpecification.Target is NamedTableReference table)
         {
-            WriteDotRelationship(_topLevelObject, GetSchemaObjectNameString(table.SchemaObject), "INSERT");
+            WriteDotRelationship(topLevelObject, GetSchemaObjectNameString(table.SchemaObject), "INSERT");
         }
     }
 
@@ -100,7 +93,7 @@ class StatementVisitor : TSqlFragmentVisitor
             }
             name ??= GetSchemaObjectNameString(table.SchemaObject);
 
-            WriteDotRelationship(_topLevelObject, name, label);
+            WriteDotRelationship(topLevelObject, name, label);
         }
     }
 
@@ -108,7 +101,7 @@ class StatementVisitor : TSqlFragmentVisitor
     {
         if (statement.IntoTable is NamedTableReference table)
         {
-            WriteDotRelationship(_topLevelObject, GetSchemaObjectNameString(table.SchemaObject), "INSERT");
+            WriteDotRelationship(topLevelObject, GetSchemaObjectNameString(table.SchemaObject), "INSERT");
         }
     }
 
@@ -120,15 +113,15 @@ class StatementVisitor : TSqlFragmentVisitor
             {
                 if (actionClause.Action is DeleteMergeAction)
                 {
-                    WriteDotRelationship(_topLevelObject, GetSchemaObjectNameString(targetTable.SchemaObject), "DELETE");
+                    WriteDotRelationship(topLevelObject, GetSchemaObjectNameString(targetTable.SchemaObject), "DELETE");
                 }
                 else if (actionClause.Action is UpdateMergeAction)
                 {
-                    WriteDotRelationship(_topLevelObject, GetSchemaObjectNameString(targetTable.SchemaObject), "UPDATE");
+                    WriteDotRelationship(topLevelObject, GetSchemaObjectNameString(targetTable.SchemaObject), "UPDATE");
                 }
                 else if (actionClause.Action is InsertMergeAction)
                 {
-                    WriteDotRelationship(_topLevelObject, GetSchemaObjectNameString(targetTable.SchemaObject), "INSERT");
+                    WriteDotRelationship(topLevelObject, GetSchemaObjectNameString(targetTable.SchemaObject), "INSERT");
                 }
             }
         }
@@ -136,25 +129,25 @@ class StatementVisitor : TSqlFragmentVisitor
 
     public override void Visit(TruncateTableStatement statement)
     {
-        WriteDotRelationship(_topLevelObject, GetSchemaObjectNameString(statement.TableName), "TRUNC");
+        WriteDotRelationship(topLevelObject, GetSchemaObjectNameString(statement.TableName), "TRUNC");
     }
 
     public override void Visit(ExecuteStatement statement)
     {
         if (statement.ExecuteSpecification.ExecutableEntity is ExecutableProcedureReference proc)
         {
-            WriteDotRelationship(_topLevelObject, GetSchemaObjectNameString(proc.ProcedureReference.ProcedureReference.Name), "EXEC");
+            WriteDotRelationship(topLevelObject, GetSchemaObjectNameString(proc.ProcedureReference.ProcedureReference.Name), "EXEC");
         }
 
-        if (statement.ExecuteSpecification.ExecutableEntity is ExecutableStringList exec)
+        if (statement.ExecuteSpecification.ExecutableEntity is ExecutableStringList)
         {
-            WriteDotRelationship(_topLevelObject, "EXEC()", "EXEC");
+            WriteDotRelationship(topLevelObject, "EXEC()", "EXEC");
         }
     }
 
     public override void Visit(BeginDialogStatement statement)
     {
-        WriteDotRelationship(_topLevelObject, $"{statement.InitiatorServiceName.Value}.{statement.ContractName.Value}", "QUEUE");
+        WriteDotRelationship(topLevelObject, $"{statement.InitiatorServiceName.Value}.{statement.ContractName.Value}", "QUEUE");
     }
 
     // Helper class to visit all table references in the FROM clause
